@@ -56,6 +56,7 @@ touch "$MARKER"
 	-Pkotlin.compiler.execution.strategy=in-process \
 	-Pnavic.abis="$ABI" \
 	-Pandroid.injected.build.abi="$ABI" \
+	-Pandroid.injected.testOnly=false \
 	--console=plain "$@"
 
 UNSIGNED="$(find app/build/intermediates/apk -name '*.apk' -newer "$MARKER" 2>/dev/null | head -1)"
