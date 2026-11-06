@@ -75,9 +75,19 @@ fun NowPlayingTechnicalInfoRow() {
 						?: song?.fileExtension?.uppercase()
 						?: "--"
 
+				val bpmFormatted = song?.bpm?.takeIf { it > 0 }?.let { "$it BPM" }
+
+				val technicalParts = buildList {
+					add(
+						bitDepthFormatted?.let { "$format • $it / $sampleRateFormatted" }
+							?: "$format • $sampleRateFormatted"
+					)
+					add(bitrateFormatted)
+					bpmFormatted?.let { add(it) }
+				}
+
 				Text(
-					text = bitDepthFormatted?.let { "$format • $it / $sampleRateFormatted • $bitrateFormatted" }
-						?: "$format • $sampleRateFormatted • $bitrateFormatted",
+					text = technicalParts.joinToString(" • "),
 					style = style,
 					color = color
 				)

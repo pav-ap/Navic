@@ -145,7 +145,12 @@ fun SongListScreenItem(
 				supportingContent = {
 					Column {
 						MarqueeText(
-							buildSongInfoString(song)
+							buildSongInfoString(
+								song = song,
+								// Year dropped to make room for BPM on this row.
+								showYear = false,
+								showBpm = true
+							)
 						)
 						if (song.userRating != null && song.userRating != 0) {
 							SmallRatingRow(rating = song.userRating)

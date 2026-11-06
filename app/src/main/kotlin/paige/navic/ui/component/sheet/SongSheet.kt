@@ -163,7 +163,8 @@ fun SongSheet(
 							onClickArtist = {
 								onDismissRequest()
 								backStack.add(Screen.ArtistDetail(it))
-							}
+							},
+							showBpm = true
 						)
 					)
 				},

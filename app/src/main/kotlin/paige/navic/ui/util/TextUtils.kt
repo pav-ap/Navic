@@ -102,6 +102,7 @@ fun buildSongInfoString(
 	showExternal: Boolean = true,
 	showAlbum: Boolean = true,
 	showYear: Boolean = true,
+	showBpm: Boolean = false,
 	showPlayCount: Boolean = false
 ): AnnotatedString {
 	val snackBarState = LocalSnackBarState.current
@@ -146,6 +147,13 @@ fun buildSongInfoString(
 			artists = song.artists,
 			onClick = onClickArtist
 		)
+
+		if (showBpm) {
+			song.bpm?.takeIf { it > 0 }?.let { bpm ->
+				appendBulletPoint()
+				append("$bpm BPM")
+			}
+		}
 
 		if (showPlayCount && song.playCount > 0) {
 			appendBulletPoint()

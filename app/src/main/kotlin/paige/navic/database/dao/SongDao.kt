@@ -33,6 +33,24 @@ interface SongDao {
 	""")
 	fun getPagedSongsByPlaylistId(playlistId: String): PagingSource<Int, SongEntity>
 
+	// Tracks without a BPM sort last in both directions, so reversing the order
+	// doesn't put every unknown tempo at the top.
+	@Query("""
+		SELECT s.* FROM SongEntity s
+		INNER JOIN PlaylistSongCrossRef ps ON s.songId = ps.songId
+		WHERE ps.playlistId = :playlistId
+		ORDER BY (s.bpm IS NULL), s.bpm ASC, LOWER(s.title) ASC
+	""")
+	fun getPagedSongsByPlaylistIdByBpmAsc(playlistId: String): PagingSource<Int, SongEntity>
+
+	@Query("""
+		SELECT s.* FROM SongEntity s
+		INNER JOIN PlaylistSongCrossRef ps ON s.songId = ps.songId
+		WHERE ps.playlistId = :playlistId
+		ORDER BY (s.bpm IS NULL), s.bpm DESC, LOWER(s.title) DESC
+	""")
+	fun getPagedSongsByPlaylistIdByBpmDesc(playlistId: String): PagingSource<Int, SongEntity>
+
 	@RawQuery
 	suspend fun getSongIdsByQuery(query: RoomRawQuery): List<String>
 

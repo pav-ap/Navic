@@ -203,7 +203,8 @@ fun CollectionDetailScreenSongRow(
 							text = buildSongInfoString(
 								song = song,
 								showYear = false,
-								showAlbum = false
+								showAlbum = false,
+								showBpm = true
 							),
 							style = MaterialTheme.typography.bodySmall
 						)

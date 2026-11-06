@@ -12,7 +12,9 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -25,6 +27,8 @@ import paige.navic.domain.manager.session.SessionState
 import paige.navic.domain.manager.ui.SnackBarManager
 import paige.navic.domain.model.DomainAlbum
 import paige.navic.domain.model.DomainAlbumInfo
+import paige.navic.domain.model.DomainPlaylist
+import paige.navic.domain.model.DomainPlaylistSongSort
 import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.DomainSongCollection
 import paige.navic.domain.repository.AlbumRepository
@@ -65,9 +69,18 @@ class CollectionDetailViewModel(
 
 	val isReachable = reachability.isReachable
 
-	val pagedSongs: Flow<PagingData<DomainSong>> = repository
-		.getPagedPlaylistSongs(collectionId)
-		.cachedIn(viewModelScope)
+	// Ordering of the songs inside a playlist. Changing either of these
+	// re-creates the paging source, so the list re-queries rather than sorting
+	// only the pages already loaded.
+	val playlistSongSort = MutableStateFlow(DomainPlaylistSongSort.Position)
+	val playlistSongSortReversed = MutableStateFlow(false)
+
+	val pagedSongs: Flow<PagingData<DomainSong>> =
+		combine(playlistSongSort, playlistSongSortReversed) { sort, reversed ->
+			sort to reversed
+		}.flatMapLatest { (sort, reversed) ->
+			repository.getPagedPlaylistSongs(collectionId, sort, reversed)
+		}.cachedIn(viewModelScope)
 
 	val otherAlbums = uiState
 		.map { state -> (state.data?.collection as? DomainAlbum) }
@@ -84,6 +97,14 @@ class CollectionDetailViewModel(
 		launch {
 			sessionManager.sessionState.collect { if (it is SessionState.Authenticated) refreshCollection(false) }
 		}
+	}
+
+	fun setPlaylistSongSort(sort: DomainPlaylistSongSort) {
+		playlistSongSort.value = sort
+	}
+
+	fun setPlaylistSongSortReversed(reversed: Boolean) {
+		playlistSongSortReversed.value = reversed
 	}
 
 	fun refreshCollection(fullRefresh: Boolean) = launch {

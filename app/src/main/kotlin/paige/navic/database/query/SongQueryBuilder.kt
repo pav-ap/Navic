@@ -60,6 +60,10 @@ fun DomainSongListType.toSqlQuery(
 		DomainSongListType.Random -> "RANDOM()"
 		DomainSongListType.Rating -> "COALESCE(userRating, 0) DESC, LOWER(title) ASC"
 		DomainSongListType.Year -> "COALESCE(year, 0) DESC, LOWER(title) ASC"
+		DomainSongListType.Alphabetical -> "LOWER(title) ASC"
+		// Tracks with no BPM sort to the end in both directions, so reversing
+		// the order doesn't fill the top of the list with unknown tempos.
+		DomainSongListType.Bpm -> "(bpm IS NULL), bpm ASC, LOWER(title) ASC"
 		is DomainSongListType.ByArtist -> "playCount DESC, LOWER(title) ASC"
 		is DomainSongListType.ByGenre -> "playCount DESC, LOWER(title) ASC"
 	}

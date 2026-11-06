@@ -123,7 +123,8 @@ fun SongRow(
 					buildSongInfoString(
 						song = song,
 						onClickArtist = { backStack.add(Screen.ArtistDetail(it)) },
-						showPlayCount = true
+						showPlayCount = true,
+						showBpm = true
 					)
 				)
 				if (song.userRating != null && song.userRating != 0) {

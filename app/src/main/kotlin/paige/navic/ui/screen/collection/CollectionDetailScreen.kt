@@ -76,6 +76,7 @@ import paige.navic.ui.screen.collection.component.CollectionDetailScreenHeadingR
 import paige.navic.ui.screen.collection.component.CollectionDetailScreenHeadingRowButtons
 import paige.navic.ui.screen.collection.component.CollectionDetailScreenSongRow
 import paige.navic.ui.screen.collection.component.CollectionDetailScreenSongRowDropdown
+import paige.navic.ui.screen.playlist.component.PlaylistSongSortButton
 import paige.navic.ui.screen.collection.component.CollectionDetailScreenTopBar
 import paige.navic.ui.screen.collection.viewmodel.CollectionDetailViewModel
 import paige.navic.ui.screen.playlist.dialog.PlaylistUpdateDialog
@@ -104,6 +105,9 @@ fun CollectionDetailScreen(
 
 	val selectedAlbum = state.data?.selectedAlbum
 	val isReachable by viewModel.isReachable.collectAsStateWithLifecycle()
+
+	val playlistSongSort by viewModel.playlistSongSort.collectAsStateWithLifecycle()
+	val playlistSongSortReversed by viewModel.playlistSongSortReversed.collectAsStateWithLifecycle()
 
 	var shareId by remember { mutableStateOf<String?>(null) }
 
@@ -197,9 +201,26 @@ fun CollectionDetailScreen(
 					}
 
 					item {
-						CollectionDetailScreenHeadingRowButtons(
-							collection = collection
-						)
+						Row(
+							modifier = Modifier.fillMaxWidth(),
+							verticalAlignment = Alignment.CenterVertically
+						) {
+							Box(modifier = Modifier.weight(1f)) {
+								CollectionDetailScreenHeadingRowButtons(
+									collection = collection
+								)
+							}
+							// Only playlists get a song-order control; albums are
+							// always disc/track ordered.
+							if (collection is DomainPlaylist) {
+								PlaylistSongSortButton(
+									sort = playlistSongSort,
+									onSetSort = viewModel::setPlaylistSongSort,
+									reversed = playlistSongSortReversed,
+									onSetReversed = viewModel::setPlaylistSongSortReversed
+								)
+							}
+						}
 					}
 
 					if (collection is DomainAlbum) {

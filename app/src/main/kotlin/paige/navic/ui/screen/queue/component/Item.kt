@@ -149,7 +149,8 @@ fun QueueScreenItem(
 							buildSongInfoString(
 								song,
 								showYear = false,
-								showAlbum = false
+								showAlbum = false,
+								showBpm = true
 							),
 							modifier = Modifier.weight(1f),
 							maxLines = 1

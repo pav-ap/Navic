@@ -20,6 +20,7 @@ import paige.navic.database.mapper.toEntity
 import paige.navic.domain.manager.session.SessionManager
 import paige.navic.domain.model.DomainAlbum
 import paige.navic.domain.model.DomainPlaylist
+import paige.navic.domain.model.DomainPlaylistSongSort
 import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.DomainSongCollection
 import dev.zt64.subsonic.api.model.AlbumInfo as ApiAlbumInfo
@@ -87,14 +88,24 @@ class CollectionRepository(
 		)
 	}
 
-	fun getPagedPlaylistSongs(playlistId: String): Flow<PagingData<DomainSong>> {
+	fun getPagedPlaylistSongs(
+		playlistId: String,
+		sort: DomainPlaylistSongSort = DomainPlaylistSongSort.Position,
+		reversed: Boolean = false
+	): Flow<PagingData<DomainSong>> {
 		return Pager(
 			config = PagingConfig(
 				pageSize = 20,
 				prefetchDistance = 10
 			),
 			pagingSourceFactory = {
-				songDao.getPagedSongsByPlaylistId(playlistId)
+				when {
+					sort != DomainPlaylistSongSort.Bpm ->
+						songDao.getPagedSongsByPlaylistId(playlistId)
+
+					reversed -> songDao.getPagedSongsByPlaylistIdByBpmDesc(playlistId)
+					else -> songDao.getPagedSongsByPlaylistIdByBpmAsc(playlistId)
+				}
 			}
 		).flow.map { pagingData -> pagingData.map { it.toDomainModel() } }
 	}
