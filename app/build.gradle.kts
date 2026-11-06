@@ -38,7 +38,7 @@ android {
 	}
 
 	defaultConfig {
-		applicationId = "paige.navic"
+		applicationId = "nz.pavstacey.navic"
 		minSdk = libs.versions.android.minSdk.get().toInt()
 		targetSdk = libs.versions.android.targetSdk.get().toInt()
 		versionCode = 61
@@ -46,9 +46,20 @@ android {
 		multiDexEnabled = true
 
 		ndk {
-			abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
-			if (!isTaskRelease) {
-				abiFilters.addAll(listOf("x86_64", "x86"))
+			// Optional override so the ABI set can be pinned without editing this file,
+			// e.g. -Pnavic.abis=arm64-v8a,armeabi-v7a
+			val abiOverride = findProperty("navic.abis")
+				?.toString()
+				?.split(",")
+				?.map { it.trim() }
+				?.filter { it.isNotEmpty() }
+			if (!abiOverride.isNullOrEmpty()) {
+				abiFilters.addAll(abiOverride)
+			} else {
+				abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
+				if (!isTaskRelease) {
+					abiFilters.addAll(listOf("x86_64", "x86"))
+				}
 			}
 		}
 	}
@@ -77,7 +88,17 @@ android {
 
 		debug {
 			applicationIdSuffix = ".debug"
-			resValue("string", "app_name", "Navic (Dev)")
+			versionNameSuffix = "-bpm"
+			resValue("string", "app_name", "Navic BPM")
+			// Opt-in minified debug build for a release-sized APK: -Pnavic.minify=true
+			if (findProperty("navic.minify")?.toString() == "true") {
+				isMinifyEnabled = true
+				isShrinkResources = true
+				proguardFiles(
+					getDefaultProguardFile("proguard-android-optimize.txt"),
+					"proguard-rules.pro"
+				)
+			}
 		}
 	}
 
