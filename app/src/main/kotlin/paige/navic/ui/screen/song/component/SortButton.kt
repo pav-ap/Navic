@@ -36,9 +36,11 @@ fun SongListScreenSortButton(
 		persistentListOf(
 			DomainSongListType.FrequentlyPlayed,
 			DomainSongListType.Newest,
+			DomainSongListType.Alphabetical,
 			DomainSongListType.Random,
 			DomainSongListType.Rating,
-			DomainSongListType.Year
+			DomainSongListType.Year,
+			DomainSongListType.Bpm
 		)
 	}
 	var expanded by remember { mutableStateOf(false) }
