@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import paige.navic.database.dao.SyncActionDao
+import paige.navic.domain.manager.runtime.ExportManager
 import paige.navic.domain.manager.session.connectivity.ReachabilityFlow
 import paige.navic.domain.manager.session.DownloadManager
 import paige.navic.domain.manager.session.SyncManager
@@ -27,8 +28,21 @@ class SettingsDataStorageViewModel(
 	private val dbRepository: DbRepository,
 	private val syncDao: SyncActionDao,
 	private val downloadManager: DownloadManager,
+	private val exportManager: ExportManager,
 	reachability: ReachabilityFlow
 ) : ViewModel() {
+
+	data class ExportUiState(
+		val isRunning: Boolean = false,
+		val finished: Boolean = false,
+		val notSupported: Boolean = false,
+		val progress: ExportManager.ExportProgress? = null
+	)
+
+	private val _exportState = MutableStateFlow(ExportUiState())
+	val exportState: StateFlow<ExportUiState> = _exportState
+
+	val isExportSupported: Boolean = exportManager.isSupported
 
 	val syncState = syncManager.syncState
 		.stateIn(
@@ -88,5 +102,28 @@ class SettingsDataStorageViewModel(
 
 	fun cancelLibraryDownload() {
 		downloadManager.cancelAllActiveDownloads()
+	}
+
+	fun exportDownloads() {
+		if (_exportState.value.isRunning) return
+		if (!exportManager.isSupported) {
+			_exportState.value = ExportUiState(notSupported = true)
+			return
+		}
+		viewModelScope.launch {
+			var last: ExportManager.ExportProgress? = null
+			_exportState.value = ExportUiState(isRunning = true)
+			exportManager.exportDownloads().collect { progress ->
+				last = progress
+				_exportState.value = ExportUiState(isRunning = true, progress = progress)
+			}
+			_exportState.value = ExportUiState(finished = true, progress = last)
+		}
+	}
+
+	fun clearExportState() {
+		if (!_exportState.value.isRunning) {
+			_exportState.value = ExportUiState()
+		}
 	}
 }

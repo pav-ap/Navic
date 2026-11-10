@@ -13,6 +13,7 @@ import androidx.room3.Query
 import kotlinx.coroutines.flow.Flow
 import paige.navic.database.entity.DownloadEntity
 import paige.navic.database.entity.DownloadStatus
+import paige.navic.database.model.ExportSongRow
 
 @Dao
 interface DownloadDao {
@@ -69,4 +70,24 @@ interface DownloadDao {
 		"""
 	)
 	suspend fun countDownloadedSongsWithCoverArt(coverArtId: String): Int
+
+	@Query(
+		"""
+		SELECT s.songId AS songId,
+		       s.title AS title,
+		       s.artistName AS artistName,
+		       s.albumTitle AS albumTitle,
+		       s.trackNumber AS trackNumber,
+		       s.discNumber AS discNumber,
+		       s.fileExtension AS fileExtension,
+		       s.mimeType AS mimeType,
+		       d.filePath AS filePath,
+		       d.mimeType AS downloadMimeType
+		FROM DownloadEntity d
+		INNER JOIN SongEntity s ON s.songId = d.songId
+		WHERE d.status = 'DOWNLOADED' AND d.filePath IS NOT NULL
+		ORDER BY s.artistName, s.albumTitle, s.discNumber, s.trackNumber, s.title
+		"""
+	)
+	suspend fun getDownloadedSongsForExport(): List<ExportSongRow>
 }

@@ -117,6 +117,7 @@ fun SettingsDataStorageScreen() {
 	var pendingDownloadStorage by remember { mutableStateOf<DownloadStorage?>(null) }
 
 	val isReachable by viewModel.isReachable.collectAsStateWithLifecycle()
+	val exportState by viewModel.exportState.collectAsStateWithLifecycle()
 
 	val calculating = stringResource(R.string.info_status_calculating)
 	var imageCacheSizeMb by remember { mutableStateOf(calculating) }
@@ -462,9 +463,47 @@ fun SettingsDataStorageScreen() {
 						},
 						trailingContent = offlineIcon,
 						shapes = SegmentedListItemDefaults.segmentedShapes(index = 5, count = 6)
-					)
-				}
-				SettingsGroup(title = { Text(stringResource(R.string.title_cache_management)) }) {
+				)
+
+				SegmentedListItem(
+					onClick = {
+						if (exportState.isRunning) {
+							viewModel.clearExportState()
+						} else {
+							viewModel.exportDownloads()
+						}
+					},
+					enabled = viewModel.isExportSupported && downloadCount > 0,
+					content = { Text(stringResource(R.string.option_export_downloads)) },
+					supportingContent = {
+						Text(
+							text = when {
+								exportState.notSupported -> stringResource(R.string.error_export_unsupported)
+								exportState.isRunning && exportState.progress != null ->
+									stringResource(
+										R.string.info_export_progress,
+										exportState.progress?.done ?: 0,
+										exportState.progress?.total ?: 0
+									)
+								exportState.finished -> {
+									val progress = exportState.progress
+									if (progress == null || progress.total == 0)
+										stringResource(R.string.info_export_nothing)
+									else stringResource(
+										R.string.info_export_finished,
+										progress.exported,
+										progress.skipped,
+										progress.failed
+									)
+								}
+								else -> stringResource(R.string.subtitle_export_downloads)
+							}
+						)
+					},
+					shapes = SegmentedListItemDefaults.segmentedShapes(index = 6, count = 7)
+				)
+			}
+			SettingsGroup(title = { Text(stringResource(R.string.title_cache_management)) }) {
 					SegmentedListItem(
 						onClick = {},
 						content = { Text(stringResource(R.string.option_image_cache_size)) },
