@@ -25,6 +25,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,11 +33,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import paige.navic.R
 import paige.navic.database.dao.AlbumDao
 import paige.navic.database.mapper.toDomainModel
 import paige.navic.domain.manager.playback.AudioGainManager
+import paige.navic.domain.manager.playback.JukeboxClient
+import paige.navic.domain.manager.playback.JukeboxStatus
 import paige.navic.domain.manager.playback.StreamCacheManager
 import paige.navic.domain.manager.runtime.PreferenceManager
 import paige.navic.domain.manager.session.DownloadManager
@@ -56,6 +61,7 @@ import paige.navic.playback.exoplayer.ExoStateHolder
 import paige.navic.playback.exoplayer.impl.cache.NavicDataSource
 import paige.navic.playback.exoplayer.impl.cache.NavicDataSource.Companion.buildCoverUri
 import paige.navic.playback.exoplayer.impl.cache.NavicDataSource.Companion.buildSongUri
+import paige.navic.ui.core.PlaybackOutput
 import paige.navic.ui.core.PlayerUiState
 import paige.navic.util.Logger
 import java.io.File
@@ -71,6 +77,7 @@ class MediaPlayer(
 	private val downloadManager: DownloadManager,
 	private val preferenceManager: PreferenceManager,
 	private val audioGainManager: AudioGainManager,
+	private val jukeboxClient: JukeboxClient,
 	private val application: Application,
 	private val albumDao: AlbumDao,
 	private val sessionManager: SessionManager,
@@ -84,6 +91,7 @@ class MediaPlayer(
 
 	private var controller: MediaController? = null
 	private var controllerFuture: ListenableFuture<MediaController>? = null
+	private var jukeboxPollJob: Job? = null
 
 	private var loadingCollectionId: String? = null
 
@@ -132,6 +140,11 @@ class MediaPlayer(
 				)
 			}
 
+			if (_uiState.value.output == PlaybackOutput.SERVER) {
+				sendJukeboxQueue(songs, index)
+				return@launch
+			}
+
 			controller?.let { player ->
 				if (songs.isEmpty()) {
 					player.clearMediaItems()
@@ -146,7 +159,48 @@ class MediaPlayer(
 			checkAndAutoFillQueue()
 		}
 
+	fun useServerOutput() = launch {
+		val state = _uiState.value
+		if (state.output == PlaybackOutput.SERVER || state.queue.isEmpty()) return@launch
+		if (state.queue.any { it.id.startsWith("radio_") }) {
+			snackBarManager.notify(R.string.notice_jukebox_radio_unsupported)
+			return@launch
+		}
+
+		val index = state.currentIndex.coerceAtLeast(0)
+		val positionMs = state.currentSong?.let { song ->
+			(state.progress * song.duration.inWholeMilliseconds).toLong()
+		} ?: 0L
+
+		controller?.pause()
+		_uiState.update { it.copy(output = PlaybackOutput.SERVER, isLoading = true, jukeboxError = null) }
+		sendJukeboxQueue(state.queue, index, positionMs)
+	}
+
+	fun usePhoneOutput() = launch {
+		if (_uiState.value.output != PlaybackOutput.SERVER) return@launch
+		jukeboxPollJob?.cancel()
+		runCatching {
+			jukeboxClient.stop()
+			jukeboxClient.clear()
+		}
+		_uiState.update {
+			it.copy(
+				output = PlaybackOutput.PHONE,
+				isPaused = true,
+				isLoading = true,
+				jukeboxError = null
+			)
+		}
+		prepareLocalQueue(play = false)
+		_uiState.update { it.copy(isLoading = false) }
+	}
+
 	fun togglePlay() {
+		if (uiState.value.output == PlaybackOutput.SERVER) {
+			toggleJukeboxPlay()
+			return
+		}
 		if (!uiState.value.isPaused) {
 			pause()
 		} else {
@@ -522,6 +576,7 @@ class MediaPlayer(
 	}
 
 	private fun updatePlaybackState() {
+		if (_uiState.value.output == PlaybackOutput.SERVER) return
 		val controller = controller ?: return
 		val index = controller.currentMediaItemIndex
 		if (index == C.INDEX_UNSET) return
@@ -738,6 +793,7 @@ class MediaPlayer(
 	}
 
 	fun addToQueueSingle(song: DomainSong, notify: Boolean = true) = this@MediaPlayer.launch {
+		val wasEmpty = _uiState.value.queue.isEmpty()
 		val order = appendedShuffleOrder(_uiState.value, listOf(song))
 		_uiState.update {
 			it.copy(
@@ -746,6 +802,19 @@ class MediaPlayer(
 				currentIndex = if (it.currentIndex == -1) 0 else it.currentIndex,
 				currentSong = if (it.currentIndex == -1) song else it.currentSong
 			)
+		}
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			runCatching {
+				val status = jukeboxClient.add(listOf(song.id))
+				applyJukeboxStatus(status)
+				if (wasEmpty) {
+					applyJukeboxStatus(jukeboxClient.start())
+				}
+			}.onFailure { error ->
+				_uiState.update { state -> state.copy(jukeboxError = error.message) }
+			}
+			if (notify) snackBarManager.notifyAddedToQueue()
+			return@launch
 		}
 		controller?.addMediaItem(song.toMediaItem())
 		if (order.isNotEmpty()) pushShuffleOrder(order)
@@ -758,6 +827,7 @@ class MediaPlayer(
 
 	fun addToQueue(songs: List<DomainSong>, notify: Boolean = true) = this@MediaPlayer.launch {
 		if (songs.isEmpty()) return@launch
+		val wasEmpty = _uiState.value.queue.isEmpty()
 		val order = appendedShuffleOrder(_uiState.value, songs)
 		val items = withContext(Dispatchers.Default) { songs.map { it.toMediaItem() } }
 		_uiState.update {
@@ -767,6 +837,19 @@ class MediaPlayer(
 				currentIndex = if (it.currentIndex == -1) 0 else it.currentIndex,
 				currentSong = if (it.currentIndex == -1) songs.first() else it.currentSong
 			)
+		}
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			runCatching {
+				val status = jukeboxClient.add(songs.map { it.id })
+				applyJukeboxStatus(status)
+				if (wasEmpty) {
+					applyJukeboxStatus(jukeboxClient.start())
+				}
+			}.onFailure { error ->
+				_uiState.update { state -> state.copy(jukeboxError = error.message) }
+			}
+			if (notify) snackBarManager.notifyAddedToQueue()
+			return@launch
 		}
 		controller?.addMediaItems(items)
 		if (order.isNotEmpty()) pushShuffleOrder(order)
@@ -811,12 +894,24 @@ class MediaPlayer(
 				currentSong = if (newIndex == -1) null else newQueue[newIndex]
 			)
 		}
+		if (state.output == PlaybackOutput.SERVER) {
+			if (newQueue.isEmpty()) {
+				sendJukeboxClear()
+			} else {
+				sendJukeboxQueue(newQueue, newIndex.coerceAtLeast(0))
+			}
+			return@launch
+		}
 		controller?.removeMediaItem(normalIndex)
 		if (newOrder.isNotEmpty()) pushShuffleOrder(newOrder)
 	}
 
 	fun moveQueueItem(fromIndex: Int, toIndex: Int) = this@MediaPlayer.launch {
 		val state = _uiState.value
+		if (state.output == PlaybackOutput.SERVER) {
+			snackBarManager.notify(R.string.notice_jukebox_queue_edit_unsupported)
+			return@launch
+		}
 		if (fromIndex !in state.activeQueue.indices || toIndex !in state.activeQueue.indices) {
 			return@launch
 		}
@@ -854,6 +949,14 @@ class MediaPlayer(
 	}
 
 	fun clearQueue() = this@MediaPlayer.launch {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			jukeboxPollJob?.cancel()
+			runCatching {
+				jukeboxClient.stop()
+				jukeboxClient.clear()
+			}
+			_uiState.update { it.copy(output = PlaybackOutput.PHONE, isPaused = true) }
+		}
 		_uiState.update {
 			it.copy(
 				queue = emptyList(),
@@ -872,6 +975,10 @@ class MediaPlayer(
 			state.shuffleOrder.getOrNull(index) ?: return@launch
 		} else {
 			index
+		}
+		if (state.output == PlaybackOutput.SERVER) {
+			if (normalIndex in state.queue.indices) jukeboxSkip(normalIndex)
+			return@launch
 		}
 		controller?.let { player ->
 			if (normalIndex in 0 until player.mediaItemCount) {
@@ -1031,11 +1138,177 @@ class MediaPlayer(
 		}
 	}
 
+	private fun toggleJukeboxPlay() = launch {
+		if (_uiState.value.isPaused) jukeboxStart() else jukeboxStop()
+	}
+
+	private suspend fun jukeboxStart() {
+		runCatching {
+			val status = jukeboxClient.start()
+			applyJukeboxStatus(status)
+			ensureJukeboxPolling()
+		}.onFailure { error ->
+			_uiState.update { it.copy(jukeboxError = error.message) }
+		}
+	}
+
+	private suspend fun jukeboxStop() {
+		runCatching {
+			val status = jukeboxClient.stop()
+			applyJukeboxStatus(status)
+			ensureJukeboxPolling()
+		}.onFailure { error ->
+			_uiState.update { it.copy(jukeboxError = error.message) }
+		}
+	}
+
+	private suspend fun jukeboxSkip(index: Int, offsetSeconds: Int = 0) {
+		val state = _uiState.value
+		if (state.queue.isEmpty()) return
+		val target = index.coerceIn(0, state.queue.lastIndex)
+		runCatching {
+			val status = jukeboxClient.skip(target, offsetSeconds)
+			applyJukeboxStatus(status)
+			ensureJukeboxPolling()
+		}.onFailure { error ->
+			_uiState.update { it.copy(jukeboxError = error.message) }
+		}
+	}
+
+	private suspend fun sendJukeboxQueue(
+		songs: List<DomainSong>,
+		startIndex: Int,
+		positionMs: Long = 0L
+	) {
+		if (songs.isEmpty()) return
+		if (songs.any { it.id.startsWith("radio_") }) {
+			snackBarManager.notify(R.string.notice_jukebox_radio_unsupported)
+			_uiState.update { it.copy(output = PlaybackOutput.PHONE, isLoading = false) }
+			return
+		}
+
+		_uiState.update {
+			it.copy(
+				output = PlaybackOutput.SERVER,
+				isShuffleEnabled = false,
+				shuffleOrder = emptyList(),
+				isLoading = true,
+				jukeboxError = null
+			)
+		}
+
+		runCatching {
+			jukeboxClient.set(songs.map { it.id })
+			jukeboxClient.skip(
+				startIndex.coerceIn(0, songs.lastIndex),
+				(positionMs / 1000).toInt()
+			)
+			val status = jukeboxClient.start()
+			applyJukeboxStatus(status)
+			_uiState.update { it.copy(isLoading = false) }
+			ensureJukeboxPolling()
+		}.onFailure { error ->
+			jukeboxPollJob?.cancel()
+			_uiState.update {
+				it.copy(
+					output = PlaybackOutput.PHONE,
+					isLoading = false,
+					jukeboxError = error.message
+				)
+			}
+			snackBarManager.notify(R.string.notice_jukebox_failed)
+			prepareLocalQueue(play = false)
+		}
+	}
+
+	private suspend fun sendJukeboxClear() {
+		jukeboxPollJob?.cancel()
+		runCatching {
+			jukeboxClient.stop()
+			jukeboxClient.clear()
+		}
+		_uiState.update {
+			it.copy(
+				output = PlaybackOutput.PHONE,
+				isPaused = true,
+				isLoading = false,
+				jukeboxError = null
+			)
+		}
+		controller?.clearMediaItems()
+	}
+
+	private fun applyJukeboxStatus(status: JukeboxStatus) {
+		_uiState.update { state ->
+			val index = if (state.queue.isEmpty()) {
+				-1
+			} else {
+				status.currentIndex.coerceIn(0, state.queue.lastIndex)
+			}
+			val song = state.queue.getOrNull(index)
+			val durationSeconds = song?.duration?.inWholeSeconds?.toFloat() ?: 0f
+			val progress = if (durationSeconds > 0f) {
+				(status.position.toFloat() / durationSeconds).coerceIn(0f, 1f)
+			} else {
+				0f
+			}
+
+			state.copy(
+				currentIndex = index,
+				currentSong = song,
+				isPaused = !status.playing,
+				progress = progress
+			)
+		}
+	}
+
+	private fun ensureJukeboxPolling() {
+		if (jukeboxPollJob?.isActive == true) return
+		jukeboxPollJob = scope.launch {
+			while (isActive && _uiState.value.output == PlaybackOutput.SERVER) {
+				runCatching {
+					jukeboxClient.status()
+				}.onSuccess { status ->
+					applyJukeboxStatus(status)
+				}.onFailure { error ->
+					_uiState.update { it.copy(jukeboxError = error.message) }
+				}
+				delay(1000)
+			}
+		}
+	}
+
+	private suspend fun prepareLocalQueue(play: Boolean) {
+		val player = controller ?: return
+		val state = _uiState.value
+		if (state.queue.isEmpty()) {
+			player.clearMediaItems()
+			return
+		}
+
+		val items = withContext(Dispatchers.Default) { state.queue.map { it.toMediaItem() } }
+		val index = state.currentIndex.coerceIn(0, state.queue.lastIndex)
+		val positionMs = state.currentSong?.let { song ->
+			(state.progress * song.duration.inWholeMilliseconds).toLong()
+		} ?: 0L
+		player.setMediaItems(items, index, positionMs)
+		player.prepare()
+		if (play) player.play()
+	}
+
 	fun pause() = launch(Dispatchers.Main.immediate) {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			jukeboxStop()
+			return@launch
+		}
 		controller?.pause()
 	}
 
 	fun resume() = launch(Dispatchers.Main.immediate) {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			jukeboxStart()
+			return@launch
+		}
 		controller?.let { player ->
 			if (player.playbackState == Player.STATE_ENDED) {
 				player.seekTo(uiState.value.shuffleOrder.firstOrNull() ?: 0, 0L)
@@ -1045,10 +1318,22 @@ class MediaPlayer(
 	}
 
 	fun next() = launch(Dispatchers.Main.immediate) {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			val state = _uiState.value
+			if (state.currentIndex < state.queue.lastIndex) {
+				jukeboxSkip(state.currentIndex + 1)
+			}
+			return@launch
+		}
 		if (controller?.hasNextMediaItem() == true) controller?.seekToNextMediaItem()
 	}
 
 	fun previous() = launch(Dispatchers.Main.immediate) {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			val state = _uiState.value
+			jukeboxSkip(if (state.currentIndex > 0) state.currentIndex - 1 else 0)
+			return@launch
+		}
 		val controller = controller ?: return@launch
 		if (controller.hasPreviousMediaItem() && controller.currentPosition <= 1000) {
 			controller.seekToPreviousMediaItem()
@@ -1058,6 +1343,10 @@ class MediaPlayer(
 	}
 
 	fun toggleShuffle() {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			snackBarManager.notify(R.string.notice_jukebox_shuffle_unsupported)
+			return
+		}
 		scope.launch {
 			controller?.let { player ->
 				player.shuffleModeEnabled = !player.shuffleModeEnabled
@@ -1066,6 +1355,10 @@ class MediaPlayer(
 	}
 
 	fun toggleRepeat() = launch {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			snackBarManager.notify(R.string.notice_jukebox_repeat_unsupported)
+			return@launch
+		}
 		controller?.let { player ->
 			player.repeatMode = when (player.repeatMode) {
 				Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
@@ -1076,6 +1369,15 @@ class MediaPlayer(
 	}
 
 	fun seek(normalized: Float) = launch(Dispatchers.Main.immediate) {
+		if (_uiState.value.output == PlaybackOutput.SERVER) {
+			val state = _uiState.value
+			val durationMs = state.currentSong?.duration?.inWholeMilliseconds ?: 0L
+			if (state.currentIndex >= 0 && durationMs > 0) {
+				jukeboxSkip(state.currentIndex, ((normalized.coerceIn(0f, 1f) * durationMs) / 1000).toInt())
+				_uiState.update { it.copy(progress = normalized.coerceIn(0f, 1f)) }
+			}
+			return@launch
+		}
 		controller?.let {
 			val target = (it.effectiveDurationMs() * normalized).toLong()
 			it.seekTo(target)

@@ -440,6 +440,15 @@
 	<string name="action_reset_dont_show_agains">Reset "don't show again" dialogs</string>
 	<string name="action_send_message">Send message</string>
 	<string name="action_edit_discord_app_id">Edit Discord app ID</string>
+	<string name="action_play_on_server">Play on server</string>
+	<string name="action_play_on_phone">Play on phone</string>
+
+	<string name="notice_jukebox_failed">Could not start server playback</string>
+	<string name="notice_jukebox_radio_unsupported">Server playback does not support radio streams</string>
+	<string name="notice_jukebox_queue_edit_unsupported">Reordering the queue is not supported while playing on the server</string>
+	<string name="notice_jukebox_shuffle_unsupported">Shuffle is not supported while playing on the server</string>
+	<string name="notice_jukebox_repeat_unsupported">Repeat is not supported while playing on the server</string>
+	<string name="info_playing_on_server">Playing on server</string>
 	<string name="subtitle_rebuild_database">Wipes all local metadata and forces a fresh sync</string>
 
 	<string name="notice_deleted_playlist">Playlist deleted.</string>

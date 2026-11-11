@@ -53,6 +53,7 @@ import paige.navic.ui.component.common.RatingRow
 import paige.navic.ui.component.dialog.DeleteDownloadTarget
 import paige.navic.ui.component.dialog.rememberDownloadDeletionHandler
 import paige.navic.ui.icons.Icons
+import paige.navic.ui.icons.filled.Headphones
 import paige.navic.ui.icons.filled.Star
 import paige.navic.ui.icons.outlined.Album
 import paige.navic.ui.icons.outlined.Artist
@@ -66,6 +67,7 @@ import paige.navic.ui.icons.outlined.PlaylistAdd
 import paige.navic.ui.icons.outlined.PlaylistRemove
 import paige.navic.ui.icons.outlined.Queue
 import paige.navic.ui.icons.outlined.QueuePlayNext
+import paige.navic.ui.icons.outlined.Radio
 import paige.navic.ui.icons.outlined.Share
 import paige.navic.ui.icons.outlined.Speed
 import paige.navic.ui.icons.outlined.Star
@@ -103,6 +105,8 @@ fun SongSheet(
 	onSleepTimer: (() -> Unit)? = null,
 	showPlaybackSpeed: Boolean = false,
 	onPlaybackSpeed: (() -> Unit)? = null,
+	onToggleServerOutput: (() -> Unit)? = null,
+	serverOutputActive: Boolean = false,
 	useSongTheme: Boolean = true
 ) {
 	val preferenceManager = koinInject<PreferenceManager>()
@@ -325,6 +329,33 @@ fun SongSheet(
 						leadingContent = { Icon(Icons.Outlined.Queue, null) },
 						onClick = {
 							onAddToQueue()
+							onDismissRequest()
+						},
+						colors = colors,
+						contentPadding = contentPadding
+					)
+				}
+
+				if (onToggleServerOutput != null) {
+					ListItem(
+						content = {
+							Text(
+								stringResource(
+									if (serverOutputActive)
+										R.string.action_play_on_phone
+									else R.string.action_play_on_server
+								)
+							)
+						},
+						leadingContent = {
+							Icon(
+								if (serverOutputActive) Icons.Filled.Headphones
+								else Icons.Outlined.Radio,
+								null
+							)
+						},
+						onClick = {
+							onToggleServerOutput()
 							onDismissRequest()
 						},
 						colors = colors,

@@ -57,6 +57,7 @@ val viewModelModule = module {
 			preferenceManager = get(),
 			snackBarManager = get(),
 			audioGainManager = get(),
+			jukeboxClient = get(),
 			streamCacheManager = get(),
 			connectivityManager = get()
 		)

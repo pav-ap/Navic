@@ -7,6 +7,7 @@
 package paige.navic.ui.core
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import paige.navic.domain.model.DomainSong
 import paige.navic.domain.model.DomainSongCollection
 
@@ -27,7 +28,9 @@ data class PlayerUiState(
 	val playbackBitrate: Int? = null,
 	val playbackBitDepth: Int? = null,
 	val playbackSampleRate: Int? = null,
-	val playbackMimeType: String? = null
+	val playbackMimeType: String? = null,
+	@Transient val output: PlaybackOutput = PlaybackOutput.PHONE,
+	@Transient val jukeboxError: String? = null
 ) {
 	val isShuffled: Boolean
 		get() = isShuffleEnabled && shuffleOrder.size == queue.size && shuffleOrder.isNotEmpty() &&

@@ -17,6 +17,7 @@ import paige.navic.discord.CoverArtUploadManager
 import paige.navic.domain.download.DownloadProcessor
 import paige.navic.domain.manager.playback.AudioGainManager
 import paige.navic.domain.manager.playback.EqualizerManager
+import paige.navic.domain.manager.playback.JukeboxClient
 import paige.navic.domain.manager.playback.SleepTimerManager
 import paige.navic.domain.manager.playback.StreamCacheManager
 import paige.navic.domain.manager.runtime.ExportManager
@@ -52,6 +53,7 @@ val managerModule = module {
 	singleOf(::DownloadProcessor)
 	singleOf(::EqualizerManager)
 	singleOf(::ExportManager)
+	singleOf(::JukeboxClient)
 	singleOf(::LinkManager)
 	singleOf(::LogManager)
 	singleOf(::LoginManager)

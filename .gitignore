@@ -12,3 +12,6 @@
 /local.properties
 
 .DS_Store
+
+*.apk
+*.idsig

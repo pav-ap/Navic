@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
 import paige.navic.R
 import paige.navic.playback.MediaPlayer
+import paige.navic.ui.core.PlaybackOutput
 import paige.navic.ui.icons.Icons
 import paige.navic.ui.icons.filled.RepeatOn
 import paige.navic.ui.icons.filled.RepeatOneOn
@@ -66,6 +67,7 @@ fun NowPlayingButtonsRow() {
 	val isPressed by interactionSource.collectIsPressedAsState()
 	val scale = remember { Animatable(1f) }
 	val enabled = playerState.currentSong != null
+	val serverOutput = playerState.output == PlaybackOutput.SERVER
 	val haptic = LocalHapticFeedback.current
 
 	val hapticType = if (playerState.isPaused) {
@@ -115,7 +117,7 @@ fun NowPlayingButtonsRow() {
 			onClick = {
 				player.toggleShuffle()
 			},
-			enabled = enabled,
+			enabled = enabled && !serverOutput,
 		) {
 			Icon(
 				imageVector = if (playerState.isShuffleEnabled)
@@ -198,7 +200,7 @@ fun NowPlayingButtonsRow() {
 			onClick = {
 				player.toggleRepeat()
 			},
-			enabled = enabled,
+			enabled = enabled && !serverOutput,
 		) {
 			Icon(
 				imageVector = when (playerState.repeatMode) {

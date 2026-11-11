@@ -21,15 +21,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.dropUnlessResumed
+import dev.zt64.subsonic.api.model.Role
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.koinInject
 import paige.navic.R
 import paige.navic.di.LocalNavStack
+import paige.navic.domain.manager.session.SessionManager
+import paige.navic.domain.manager.session.SessionState
+import paige.navic.domain.manager.session.hasRole
 import paige.navic.domain.model.DomainPlaylist
 import paige.navic.playback.MediaPlayer
 import paige.navic.ui.component.dialog.ShareDialog
 import paige.navic.ui.component.sheet.SleepTimerSheet
 import paige.navic.ui.component.sheet.SongSheet
+import paige.navic.ui.core.PlaybackOutput
 import paige.navic.ui.icons.Icons
 import paige.navic.ui.icons.outlined.MoreHoriz
 import paige.navic.ui.navigation.Screen
@@ -44,8 +49,13 @@ fun NowPlayingMoreButton(
 ) {
 	val backStack = LocalNavStack.current
 	val player = koinInject<MediaPlayer>()
+	val sessionManager = koinInject<SessionManager>()
 	val playerState by player.uiState.collectAsStateWithLifecycle()
+	val sessionState by sessionManager.sessionState.collectAsStateWithLifecycle()
 	val song = playerState.currentSong
+	val canUseJukebox = (sessionState as? SessionState.Authenticated)
+		?.currentUser
+		?.hasRole(Role.JUKEBOX) == true
 	var expanded by remember { mutableStateOf(false) }
 	var sleepTimerSheetShown by rememberSaveable { mutableStateOf(false) }
 	var playlistDialogShown by rememberSaveable { mutableStateOf(false) }
@@ -103,7 +113,19 @@ fun NowPlayingMoreButton(
 				onPlaybackSpeed = {
 					expanded = false
 					backStack.add(Screen.PlaybackSpeed)
-				}
+				},
+				onToggleServerOutput = if (canUseJukebox) {
+					{
+						if (playerState.output == PlaybackOutput.SERVER) {
+							player.usePhoneOutput()
+						} else {
+							player.useServerOutput()
+						}
+					}
+				} else {
+					null
+				},
+				serverOutputActive = playerState.output == PlaybackOutput.SERVER
 			)
 		}
 	}
